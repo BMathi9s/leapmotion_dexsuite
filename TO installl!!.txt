@@ -1,0 +1,44 @@
+
+git clone https://github.com/BMathi9s/leapmotion_dexsuite.git
+
+
+
+
+conda create -n leap python=3.10
+conda activate leap
+
+
+
+# Create and activate a virtual environment
+pip install -r requirements.txt
+pip install -e leapc-python-api
+python examples/tracking_event_example.py
+
+
+
+
+
+
+
+ImportError: No module named 'leapc_cffi._leapc_cffi' --->>>
+
+
+# Make sure you're in your virtual environment
+cd ~/leapmtion/leapc-python-bindings
+
+# Install build dependencies
+pip install cffi wheel build
+
+# Build the CFFI module
+cd leapc-cffi
+python setup.py build_ext --inplace
+
+# Or try the build command
+python -m build .
+
+# Install the built module
+pip install dist/leapc_cffi-*.tar.gz
+
+# Now try running the example
+cd ..
+python examples/tracking_event_example.py
