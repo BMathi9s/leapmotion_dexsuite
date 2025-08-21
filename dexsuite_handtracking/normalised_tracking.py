@@ -10,7 +10,7 @@ from typing import Dict, Optional, Tuple
 
 # If your class is in another module, import it here:
 # from ultraleap_hand_kinematics import UltraleapHandKinematics
-from raw_hand_tracking import UltraleapHandKinematics   # <-- use this if your class lives here
+from .raw_hand_tracking import UltraleapHandKinematics   # <-- use this if your class lives here
 
 # --- Safe YAML helpers (no hard dependency on PyYAML) ---
 def _save_yaml_safe(path: str, data: dict) -> None:

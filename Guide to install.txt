@@ -1,13 +1,19 @@
+1. get ultraleap 
+
+wget -qO - https://repo.ultraleap.com/keys/apt/gpg | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/ultraleap.gpg
+echo 'deb [arch=amd64] https://repo.ultraleap.com/apt stable main' | sudo tee /etc/apt/sources.list.d/ultraleap.list
+sudo apt update
+
+sudo apt install ultraleap-hand-tracking
 
 git clone https://github.com/BMathi9s/leapmotion_dexsuite.git
-
 
 
 
 conda create -n leap python=3.10
 conda activate leap
 
-
+cd
 
 # Create and activate a virtual environment
 pip install -r requirements.txt
@@ -21,7 +27,7 @@ ImportError: No module named 'leapc_cffi._leapc_cffi' --->>>
 
 
 # Make sure you're in your virtual environment
-cd ~/leapmtion/leapc-python-bindings
+cd ~/leap_module
 
 # Install build dependencies
 pip install cffi wheel build
