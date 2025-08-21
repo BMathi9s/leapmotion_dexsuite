@@ -4,7 +4,7 @@ from typing import Optional
 
 # your class file should be importable; if it's in the same file, ignore this import.
 # from ultraleap_hand_kinematics import UltraleapHandKinematics
-from __main__ import UltraleapHandKinematics  # <-- if running in the same file as the class
+from leap_tracking import UltraleapHandKinematics  # <-- if running in the same file as the class
 
 def fmt_angle(x: Optional[float]) -> str:
     return f"{x:6.1f}" if isinstance(x, (int, float)) else "  None"
