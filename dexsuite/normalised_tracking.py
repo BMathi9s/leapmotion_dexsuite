@@ -156,6 +156,26 @@ class CalibrationAndNormalization:
         nz = _linmap_clamped(z, az.min, az.max,  -10.0,  10.0)
         return (nx, ny, nz)
 
+    def get_normalized_rpy(self, use_raw_world: bool = True) -> Tuple[float,float,float]:
+        """
+        Return (nx, ny, nz) with X,Y in [-1,1], Z in [0,1].
+        - If use_raw_world=True, use raw world XYZ from Leap.
+        - If False, uses origin-corrected kinematics XYZ.
+        """
+        
+        range =180.0
+        
+        rpy = self.k.get_rpy(raw=use_raw_world)
+        if rpy is None:
+            raise RuntimeError("No hand visible.")
+        r, p, yaw = rpy
+        
+        
+        nr = _linmap_clamped(r, -range, range, -1.0,  1.0)
+        np = _linmap_clamped(p, -range, range, -1.0,  1.0)
+        ny = _linmap_clamped(yaw, -range, range,  -1.0,  1.0)
+        return (nr, np, ny)
+
     def get_normalized_joint(self, finger: str, joint: str) -> float:
         """
         Normalize joint angle for (finger, joint) into [-1,1].

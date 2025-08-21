@@ -18,7 +18,7 @@ def run():
         # --- Calibration wizards ---
         cal.run_worldframe_wizard()         # load or new (1..6 keys for new)
         cal.run_finger_calibration_wizard() # load or new (per-finger sampling)
-
+        
         
         # --- Stream normalized data ---
         print("\nStreaming NORMALIZED data (Ctrl+C to stop):")
@@ -29,7 +29,7 @@ def run():
             while True:
                 try:
                     nx, ny, nz = cal.get_normalized_xyz(use_raw_world=True)
-                    nr, np ,yaw = cal.get_normalized_rpy(use_raw_world=True)
+                    nr, np ,nyaw = cal.get_normalized_rpy()
                     joints = cal.get_all_normalized_joints()
                     abds   = cal.get_all_normalized_abductions()
                 except Exception as e:
@@ -39,6 +39,7 @@ def run():
 
                 # Build a compact single-line readout
                 parts = [f"XYZ=({fmt(nx)}, {fmt(ny)}, {fmt(nz)})"]
+                parts.append(f"rpy=({fmt(nr)}, {fmt(np)}, {fmt(nyaw)})")
                 for f in ("thumb","index","middle","ring","pinky"):
                     jd = joints.get(f, {})
                     if f == "thumb":
