@@ -5,28 +5,21 @@ import leap
 RAD2DEG = 180.0 / math.pi
 
 def vec3(v):
-    # Works with leap vectors (attributes) or sequences
     if hasattr(v, "x"):
         return (float(v.x), float(v.y), float(v.z))
     return (float(v[0]), float(v[1]), float(v[2]))
 
+def fmt_xyz(v):
+    x, y, z = vec3(v)
+    return f"({x:.1f},{y:.1f},{z:.1f})"
+
 def roll_pitch_yaw_from_palm(direction, normal):
-    # direction: unit vector from palm → fingers
-    # normal: palm normal (points “out” of the palm)
     dx, dy, dz = vec3(direction)
     nx, ny, _  = vec3(normal)
-    # Canonical Leap-style angles (match legacy behavior):
-    #  - pitch from direction vs horizontal plane
-    #  - yaw from direction projected toward camera axes
-    #  - roll from palm normal vs horizontal
     pitch = math.atan2(dy, math.sqrt(dx*dx + dz*dz))
     yaw   = math.atan2(dx, -dz)
     roll  = math.atan2(nx, -ny)
     return roll, pitch, yaw
-
-def fmt_xyz(v): 
-    x, y, z = vec3(v)
-    return f"({x:.1f},{y:.1f},{z:.1f})"
 
 def print_bone(label, bone):
     try:
@@ -54,9 +47,7 @@ class PoseListener(leap.Listener):
             hand_type = "Left" if str(hand.type) == "HandType.Left" else "Right"
             palm      = hand.palm
 
-            # Position (mm)
             pos = palm.position
-            # Orientation from basis vectors (no quaternion needed)
             direction = getattr(palm, "direction", None)
             normal    = getattr(palm, "normal", None)
 
@@ -65,18 +56,26 @@ class PoseListener(leap.Listener):
                 rpy_deg = (r*RAD2DEG, p*RAD2DEG, y*RAD2DEG)
                 rpy_txt = f"RPY(deg):({rpy_deg[0]:.1f},{rpy_deg[1]:.1f},{rpy_deg[2]:.1f})"
             else:
-                rpy_txt = "RPY: N/A (no direction/normal on palm)"
+                rpy_txt = "RPY: N/A (no direction/normal)"
 
             print(f"{hand_type} hand id:{hand.id}  pos(mm):{fmt_xyz(pos)}  {rpy_txt}")
 
-            # Optional arm info (if present)
+            # ---- Arm (forearm) ----
             arm = getattr(hand, "arm", None)
             if arm:
-                print(f"  Arm  wrist:{fmt_xyz(arm.wrist_position)}  elbow:{fmt_xyz(arm.elbow_position)}")
+                if hasattr(arm, "wrist_position") and hasattr(arm, "elbow_position"):
+                    wrist = arm.wrist_position
+                    elbow = arm.elbow_position
+                    print(f"  Arm  wrist:{fmt_xyz(wrist)}  elbow:{fmt_xyz(elbow)}")
+                elif hasattr(arm, "prev_joint") and hasattr(arm, "next_joint"):
+                    elbow = arm.prev_joint   # forearm bone: prev = elbow
+                    wrist = arm.next_joint   # forearm bone: next = wrist
+                    print(f"  Arm  wrist:{fmt_xyz(wrist)}  elbow:{fmt_xyz(elbow)}")
+                else:
+                    print("  Arm: (unrecognized structure)")
 
-            # Fingers & bones (Metacarpal → Distal)
+            # ---- Fingers & bones ----
             for digit in hand.digits:
-                # Using the same pattern as the examples (don’t rely on .type names)
                 print("  Digit:")
                 if hasattr(digit, "metacarpal"):   print_bone("Metacarpal",   digit.metacarpal)
                 if hasattr(digit, "proximal"):     print_bone("Proximal",     digit.proximal)
@@ -87,9 +86,7 @@ def main():
     listener = PoseListener()
     conn = leap.Connection()
     conn.add_listener(listener)
-
     with conn.open():
-        # Desktop mode (same as the official examples)
         conn.set_tracking_mode(leap.TrackingMode.Desktop)
         try:
             while True:
