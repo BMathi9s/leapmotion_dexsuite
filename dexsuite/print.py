@@ -1,134 +1,128 @@
 # Python 3.x — Ultraleap Gemini (LeapC) bindings
-# Prints per-hand: position (x,y,z), roll/pitch/yaw, and key bone segments.
-# Also computes RPY either from quaternion (preferred) or from palm basis fallback.
+# Prints: per-hand position (x,y,z), roll/pitch/yaw, plus per-finger bones.
+# Uses the same listener/connection style as the official examples.
 
 import math
 import time
-
-# The 'leap' package comes from ultraleap/leapc-python-bindings
-#   pip install -e leapc-python-api
-from leap import connection, tracking  # high-level helpers + typed structs if available
+import leap
 
 RAD2DEG = 180.0 / math.pi
 
 def quat_to_euler_xyz(qw, qx, qy, qz):
-    """
-    Convert quaternion (w, x, y, z) -> roll(x), pitch(y), yaw(z) in radians.
-    Assumes right-handed coordinates and unit quaternion.
-    """
+    """Quaternion (w,x,y,z) -> roll(X), pitch(Y), yaw(Z) in radians."""
     # roll (x-axis)
     t0 = +2.0 * (qw * qx + qy * qz)
     t1 = +1.0 - 2.0 * (qx * qx + qy * qy)
     roll = math.atan2(t0, t1)
-
     # pitch (y-axis)
     t2 = +2.0 * (qw * qy - qz * qx)
-    t2 = +1.0 if t2 > +1.0 else t2
-    t2 = -1.0 if t2 < -1.0 else t2
+    t2 = +1.0 if t2 > +1.0 else (-1.0 if t2 < -1.0 else t2)
     pitch = math.asin(t2)
-
     # yaw (z-axis)
     t3 = +2.0 * (qw * qz + qx * qy)
     t4 = +1.0 - 2.0 * (qy * qy + qz * qz)
     yaw = math.atan2(t3, t4)
     return roll, pitch, yaw
 
-def vec_len(v): return math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]) if v else 0.0
+def safe_attr(obj, name, default=None):
+    return getattr(obj, name, default)
 
-def angle_between(u, v):
-    if not u or not v: return 0.0
-    lu, lv = vec_len(u), vec_len(v)
-    if lu < 1e-8 or lv < 1e-8: return 0.0
-    dot = (u[0]*v[0] + u[1]*v[1] + u[2]*v[2]) / (lu*lv)
-    dot = max(-1.0, min(1.0, dot))
-    return math.acos(dot)
+def vec_tuple(v):
+    # supports LeapC vectors which behave like sequences or have x,y,z attrs
+    if v is None:
+        return (0.0, 0.0, 0.0)
+    if hasattr(v, "x"):
+        return (float(v.x), float(v.y), float(v.z))
+    return (float(v[0]), float(v[1]), float(v[2]))
 
-def project_onto_plane(v, n):
-    # v - (v·n) n
-    dot = v[0]*n[0] + v[1]*n[1] + v[2]*n[2]
-    out = (v[0]-dot*n[0], v[1]-dot*n[1], v[2]-dot*n[2])
-    l = vec_len(out)
-    return (out[0]/l, out[1]/l, out[2]/l) if l > 1e-8 else (0.0,0.0,0.0)
+def print_bone(label, bone):
+    pj = vec_tuple(safe_attr(bone, "prev_joint"))
+    nj = vec_tuple(safe_attr(bone, "next_joint"))
+    print(f"    {label:<12} start:{tuple(round(x,1) for x in pj)}  end:{tuple(round(x,1) for x in nj)}")
 
-def signed_angle_in_plane(u, v, plane_n):
-    # angle from u->v around plane normal
-    ang = angle_between(u, v)
-    # sign via cross product
-    cx = u[1]*v[2] - u[2]*v[1]
-    cy = u[2]*v[0] - u[0]*v[2]
-    cz = u[0]*v[1] - u[1]*v[0]
-    s = plane_n[0]*cx + plane_n[1]*cy + plane_n[2]*cz
-    return ang if s >= 0 else -ang
+class PoseListener(leap.Listener):
+    def on_connection_event(self, event):
+        print("Connected to Ultraleap service.")
 
-def print_bone(name, b):
-    # b has prev_joint, next_joint, direction, rotation (quat) in LeapC structs
-    pj = getattr(b, "prev_joint", None)
-    nj = getattr(b, "next_joint", None)
-    d  = getattr(b, "direction", None)
-    print(f"    {name:<12} start:{tuple(round(x,1) for x in pj)} end:{tuple(round(x,1) for x in nj)} dir:{tuple(round(x,3) for x in d)}")
+    def on_device_event(self, event):
+        try:
+            with event.device.open():
+                info = event.device.get_info()
+        except leap.LeapCannotOpenDeviceError:
+            info = event.device.get_info()
+        print(f"Found device {info.serial}")
+
+    def on_tracking_event(self, event):
+        # Match the cadence of the official examples
+        print(f"\nFrame {event.tracking_frame_id} with {len(event.hands)} hands.")
+
+        for hand in event.hands:
+            # Hand label
+            hand_type = "Left" if str(hand.type) == "HandType.Left" else "Right"
+            hid = safe_attr(hand, "id", 0)
+
+            # Position (mm)
+            palm = hand.palm
+            pos = vec_tuple(safe_attr(palm, "position"))
+
+            # Orientation: prefer quaternion; else fall back to legacy basis
+            rpy_deg = (0.0, 0.0, 0.0)
+            quat = safe_attr(palm, "orientation") or safe_attr(palm, "quaternion")
+            if quat:
+                # orientation/quaternion is typically (w, x, y, z)
+                w, x, y, z = float(quat[0]), float(quat[1]), float(quat[2]), float(quat[3])
+                r, p, y_ = quat_to_euler_xyz(w, x, y, z)
+                rpy_deg = (r * RAD2DEG, p * RAD2DEG, y_ * RAD2DEG)
+            else:
+                # Fallback using palm basis if available
+                direction = vec_tuple(safe_attr(palm, "direction"))
+                normal    = vec_tuple(safe_attr(palm, "normal"))
+                # These formulas match legacy-style outputs
+                pitch = math.atan2(direction[1], direction[2])
+                roll  = math.atan2(normal[0],    normal[1])
+                yaw   = math.atan2(direction[0], direction[2])
+                rpy_deg = (roll * RAD2DEG, pitch * RAD2DEG, yaw * RAD2DEG)
+
+            print(f"{hand_type} hand id:{hid}  pos(mm):({pos[0]:.1f},{pos[1]:.1f},{pos[2]:.1f})  "
+                  f"RPY(deg):({rpy_deg[0]:.1f},{rpy_deg[1]:.1f},{rpy_deg[2]:.1f})")
+
+            # Optional: arm info if present
+            arm = safe_attr(hand, "arm")
+            if arm:
+                wrist = vec_tuple(safe_attr(arm, "wrist_position"))
+                elbow = vec_tuple(safe_attr(arm, "elbow_position"))
+                print(f"  Arm  wrist:{tuple(round(x,1) for x in wrist)}  elbow:{tuple(round(x,1) for x in elbow)}")
+
+            # Fingers & bones — mirror the style of the examples
+            for digit in hand.digits:
+                # digit has bones: metacarpal, proximal, intermediate, distal
+                # (names align with the examples)
+                # Some devices report no metacarpal for the thumb; guard with getattr.
+                print(f"  {str(digit.type)[9:]}:")  # 'DigitType.Index' -> 'Index'
+                if hasattr(digit, "metacarpal"):
+                    print_bone("Metacarpal", digit.metacarpal)
+                if hasattr(digit, "proximal"):
+                    print_bone("Proximal", digit.proximal)
+                if hasattr(digit, "intermediate"):
+                    print_bone("Intermediate", digit.intermediate)
+                if hasattr(digit, "distal"):
+                    print_bone("Distal", digit.distal)
 
 def main():
-    # Open a LeapC connection (helpers mirror LeapPollConnection loop internally)
-    with connection.Connection() as conn:
-        print("Connected to Ultraleap service. Press Ctrl+C to quit.")
-        while True:
-            msg = conn.wait_for_frame(timeout=200)  # ms; returns a TrackingEvent wrapper
-            if not msg or not isinstance(msg, tracking.TrackingEvent):
-                continue
+    listener = PoseListener()
+    conn = leap.Connection()
+    conn.add_listener(listener)
 
-            te = msg  # alias
-            # Each TrackingEvent contains a list of 'hands'
-            for h in te.hands:
-                hid   = getattr(h, "id", 0)
-                left  = getattr(h, "type", 0) == tracking.HandType.LEFT
-                which = "Left " if left else "Right"
-                # Palm pose
-                palm_pos = tuple(h.palm.position)   # mm
-                # Try quaternion first (preferred in LeapC)
-                quat = getattr(h.palm, "orientation", None)  # (w,x,y,z) in LeapC
-                if quat:
-                    qw, qx, qy, qz = quat[0], quat[1], quat[2], quat[3]
-                    roll, pitch, yaw = quat_to_euler_xyz(qw, qx, qy, qz)
-                else:
-                    # Fallback: derive from basis vectors like legacy API
-                    palm_normal = tuple(h.palm.normal)      # like legacy: roll source
-                    palm_dir    = tuple(h.palm.direction)   # like legacy: pitch/yaw source
-                    # Roll ≈ atan2(n.x, n.y) style depends on axis conventions.
-                    # A commonly used legacy mapping:
-                    pitch = math.atan2(palm_dir[1], palm_dir[2])   # direction.pitch
-                    roll  = math.atan2(palm_normal[0], palm_normal[1])  # normal.roll
-                    yaw   = math.atan2(palm_dir[0], palm_dir[2])   # direction.yaw
-
-                print(f"\n{which}hand id:{hid}  pos(mm):({palm_pos[0]:.1f},{palm_pos[1]:.1f},{palm_pos[2]:.1f})"
-                      f"  RPY(deg):({roll*RAD2DEG:.1f},{pitch*RAD2DEG:.1f},{yaw*RAD2DEG:.1f})")
-
-                # Arm / wrist / elbow if present
-                arm = getattr(h, "arm", None)
-                if arm:
-                    wp = tuple(getattr(arm, "wrist_position", (0,0,0)))
-                    ep = tuple(getattr(arm, "elbow_position", (0,0,0)))
-                    print(f"  Arm  wrist:{tuple(round(x,1) for x in wp)}  elbow:{tuple(round(x,1) for x in ep)}")
-
-                # Fingers + bones (metacarpal, proximal, intermediate, distal)
-                for f in h.fingers:
-                    fname = f.type.name.title()  # Thumb/Index/Middle/Ring/Pinky
-                    print(f"  {fname}:")
-                    if getattr(f, "bones", None):
-                        # Iterate in anatomical order if indices are provided
-                        bones = {b.type: b for b in f.bones}
-                        # Names here mirror legacy sample.py
-                        order = [
-                            (tracking.BoneType.METACARPAL,   "Metacarpal"),
-                            (tracking.BoneType.PROXIMAL,     "Proximal"),
-                            (tracking.BoneType.INTERMEDIATE, "Intermediate"),
-                            (tracking.BoneType.DISTAL,       "Distal"),
-                        ]
-                        for t, nm in order:
-                            if t in bones:
-                                print_bone(nm, bones[t])
-
-            # simple throttle so we don’t spam the console too hard
-            time.sleep(0.02)
+    # Open and stream (same pattern as the official examples)
+    running = True
+    with conn.open():
+        # Desktop mode like the sample
+        conn.set_tracking_mode(leap.TrackingMode.Desktop)
+        try:
+            while running:
+                time.sleep(0.02)  # gentle throttle
+        except KeyboardInterrupt:
+            pass
 
 if __name__ == "__main__":
     main()
