@@ -38,4 +38,4 @@ pip install dist/leapc_cffi-*.tar.gz
 
 # Now try running the example
 cd ..
-python examples/tracking_event_example.py
+python examples/visualiser.py
