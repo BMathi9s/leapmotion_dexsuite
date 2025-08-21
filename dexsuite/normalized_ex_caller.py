@@ -32,6 +32,14 @@ def run():
                     nr, np ,nyaw = cal.get_normalized_rpy()
                     joints = cal.get_all_normalized_joints()
                     abds   = cal.get_all_normalized_abductions()
+                    
+                    
+                    # can also be called as "# example usage
+                    # nx_mcp = cal.get_normalized_index_mcp()
+                    # th_ip  = cal.get_normalized_thumb_ip()
+                    # rg_abd = cal.get_normalized_ring_abduction()
+                    
+                    
                 except Exception as e:
                     print(f"  ⚠ {e}")
                     time.sleep(0.2)

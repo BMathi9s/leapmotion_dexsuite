@@ -151,9 +151,9 @@ class CalibrationAndNormalization:
             raise RuntimeError("No hand visible.")
         x, y, z = xyz
         ax = self.world_cal.axes["x"]; ay = self.world_cal.axes["y"]; az = self.world_cal.axes["z"]
-        nx = _linmap_clamped(x, ax.min, ax.max, -10.0,  10.0)
-        ny = _linmap_clamped(y, ay.min, ay.max, 0.0,  10.0)
-        nz = _linmap_clamped(z, az.min, az.max,  -10.0,  10.0)
+        nx = _linmap_clamped(x, ax.min, ax.max, -1.0,  1.0)
+        ny = _linmap_clamped(y, ay.min, ay.max, 0.0,  1.0)
+        nz = _linmap_clamped(z, az.min, az.max,  -1.0,  1.0)
         return (nx, ny, nz)
 
     def get_normalized_rpy(self, use_raw_world: bool = True) -> Tuple[float,float,float]:
@@ -179,31 +179,36 @@ class CalibrationAndNormalization:
     def get_normalized_joint(self, finger: str, joint: str) -> float:
         """
         Normalize joint angle for (finger, joint) into [-1,1].
-        joint ∈ {'mcp','pip','dip'}; for thumb you may prefer get_normalized_thumb_ip().
+        joint ∈ {'mcp','pip','dip'}; for thumb IP use get_normalized_thumb_ip().
         """
         self._require_hand_cal()
         finger = finger.lower()
         if finger not in self.FINGERS:
-            raise ValueError("Unknown finger: %s" % finger)
+            raise ValueError(f"Unknown finger: {finger}")
         if joint not in self.JOINTS:
-            raise ValueError("Unknown joint: %s" % joint)
+            raise ValueError(f"Unknown joint: {joint}")
 
         ang = self.k.get_joint_angle(finger, joint)
-        if ang is None:
-            raise RuntimeError("Angle unavailable for %s.%s" % (finger, joint))
+        if ang is None or not math.isfinite(ang):
+            raise RuntimeError(f"Angle unavailable for {finger}.{joint}")
 
         rc = self._get_fj(finger).__dict__[joint]
         mn, mx = rc.as_tuple()
+        if not (math.isfinite(mn) and math.isfinite(mx)):
+            raise RuntimeError(f"Calibration invalid for {finger}.{joint}")
         return _linmap_clamped(ang, mn, mx, -1.0, 1.0)
 
     def get_normalized_thumb_ip(self) -> float:
         self._require_hand_cal()
         ang = (self.k.get_thumb_angles() or {}).get("ip")
-        if ang is None:
+        if ang is None or not math.isfinite(ang):
             raise RuntimeError("Thumb IP angle unavailable.")
         rc = self._get_fj("thumb").ip
         mn, mx = rc.as_tuple()
+        if not (math.isfinite(mn) and math.isfinite(mx)):
+            raise RuntimeError("Calibration invalid for thumb.ip")
         return _linmap_clamped(ang, mn, mx, -1.0, 1.0)
+
 
     def get_normalized_abduction(self, finger: str) -> float:
         """
@@ -212,11 +217,85 @@ class CalibrationAndNormalization:
         self._require_hand_cal()
         finger = finger.lower()
         ang = self.k.get_abduction(finger)
-        if ang is None:
-            raise RuntimeError("Abduction unavailable for %s" % finger)
+        if ang is None or not math.isfinite(ang):
+            raise RuntimeError(f"Abduction unavailable for {finger}")
         rc = self._get_fj(finger).abduction
         mn, mx = rc.as_tuple()
+        if not (math.isfinite(mn) and math.isfinite(mx)):
+            raise RuntimeError(f"Calibration invalid for {finger}.abduction")
         return _linmap_clamped(ang, mn, mx, -1.0, 1.0)
+        
+        # ----------------- Singular convenience getters -----------------
+    # Thumb
+    def get_normalized_thumb_mcp(self) -> float:
+        return self.get_normalized_joint("thumb", "mcp")
+
+    def get_normalized_thumb_pip(self) -> float:
+        # Some models may not expose a true thumb PIP; this will raise if angle is unavailable.
+        return self.get_normalized_joint("thumb", "pip")
+
+    def get_normalized_thumb_dip(self) -> float:
+        # Many models don't expose thumb DIP; this will raise if angle is unavailable.
+        return self.get_normalized_joint("thumb", "dip")
+
+    def get_normalized_thumb_ip(self) -> float:  # already defined above; keep name for parity
+        return super(CalibrationAndNormalization, self).get_normalized_thumb_ip()
+
+    def get_normalized_thumb_abduction(self) -> float:
+        return self.get_normalized_abduction("thumb")
+
+    # Index
+    def get_normalized_index_mcp(self) -> float:
+        return self.get_normalized_joint("index", "mcp")
+
+    def get_normalized_index_pip(self) -> float:
+        return self.get_normalized_joint("index", "pip")
+
+    def get_normalized_index_dip(self) -> float:
+        return self.get_normalized_joint("index", "dip")
+
+    def get_normalized_index_abduction(self) -> float:
+        return self.get_normalized_abduction("index")
+
+    # Middle
+    def get_normalized_middle_mcp(self) -> float:
+        return self.get_normalized_joint("middle", "mcp")
+
+    def get_normalized_middle_pip(self) -> float:
+        return self.get_normalized_joint("middle", "pip")
+
+    def get_normalized_middle_dip(self) -> float:
+        return self.get_normalized_joint("middle", "dip")
+
+    def get_normalized_middle_abduction(self) -> float:
+        return self.get_normalized_abduction("middle")
+
+    # Ring
+    def get_normalized_ring_mcp(self) -> float:
+        return self.get_normalized_joint("ring", "mcp")
+
+    def get_normalized_ring_pip(self) -> float:
+        return self.get_normalized_joint("ring", "pip")
+
+    def get_normalized_ring_dip(self) -> float:
+        return self.get_normalized_joint("ring", "dip")
+
+    def get_normalized_ring_abduction(self) -> float:
+        return self.get_normalized_abduction("ring")
+
+    # Pinky
+    def get_normalized_pinky_mcp(self) -> float:
+        return self.get_normalized_joint("pinky", "mcp")
+
+    def get_normalized_pinky_pip(self) -> float:
+        return self.get_normalized_joint("pinky", "pip")
+
+    def get_normalized_pinky_dip(self) -> float:
+        return self.get_normalized_joint("pinky", "dip")
+
+    def get_normalized_pinky_abduction(self) -> float:
+        return self.get_normalized_abduction("pinky")
+
 
     def get_all_normalized_joints(self) -> Dict[str, Dict[str, Optional[float]]]:
         out: Dict[str, Dict[str, Optional[float]]] = {}
